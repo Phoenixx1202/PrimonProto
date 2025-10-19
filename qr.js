@@ -2,11 +2,11 @@ const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion,
 const fs = require('fs');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
-var openedSocket = false;
+var socketAberto = false; // Variável para rastrear se o socket foi aberto
 var chat_count = 0;
 try { fs.rmSync('./session', { recursive: true, force: true }); } catch {}
 try { fs.rmSync('./.started', { recursive: true, force: true }); } catch {}
-var countdown = Math.max(150, chat_count * 5);
+var contagemRegressiva = Math.max(150, chat_count * 5); // O nome da variável também foi traduzido para manter a coerência interna do JS.
 
 const logger = pino({
   level: "silent",
@@ -27,23 +27,29 @@ const rl = require('readline').createInterface({
 });
 
 console.clear();
-rl.question("Login with QR code (1) or Phone Number (2)\n\n⚠️  Logging with phone number is not recommend! :: ", async (answer) => {
+rl.question("Fazer login com código QR (1) ou Número de Telefone (2)\n\n⚠️ O login com número de telefone não é recomendado! :: ", async (resposta) => {
   console.clear();
-  rl.question("Is there any other device in WhatsApp? (y/n)\n\n >> ", async (answer2) => {
+  rl.question("Existe algum outro dispositivo conectado no WhatsApp? (s/n)\n\n >> ", async (resposta2) => {
     console.clear();
-    if (answer2 == "y") {
+    if (resposta2.toLowerCase() == "s") {
       console.clear();
-      console.log("Please logout from all devices before logging in.");
+      console.log("Por favor, desconecte de todos os dispositivos antes de fazer login.");
       process.exit(1);
-    } else if (answer2 == "n") {
+    } else if (resposta2.toLowerCase() == "n") {
       console.clear();
-      if (answer == "2") {
-        rl.question("Enter your phone number. Example: 905123456789\n\n >> ", async (number) => {
-          await loginWithPhone(number);
-        }); 
-      } else if (answer == "1") {
+      if (resposta == "2") {
+        rl.question("Digite seu número de telefone. Exemplo: 5511987654321\n\n >> ", async (numero) => {
+          await loginWithPhone(numero);
+        });
+      } else if (resposta == "1") {
         genQR(true);
+      } else {
+        console.log("Opção inválida. Reinicie o script.");
+        process.exit(1);
       }
+    } else {
+      console.log("Resposta inválida. Por favor, responda 's' ou 'n'.");
+      process.exit(1);
     }
   });
   
@@ -59,7 +65,7 @@ async function genQR(qr) {
     getMessage: async (key) => {},
   });
   if (!qr && !sock.authState.creds.registered) {
-    console.log("You must use QR code to login.");
+    console.log("Você deve usar o código QR para fazer login.");
     process.exit(1);
   }
   
@@ -69,21 +75,21 @@ async function genQR(qr) {
       qrcode.generate(qrCode, { small: true });
     }
     if (connection === "connecting") {
-      console.log("Connecting to WhatsApp... Please wait.");
+      console.log("Conectando ao WhatsApp... Por favor, aguarde.");
     } else if (connection === 'open') {
       await delay(3000);
       console.clear();
-      if (openedSocket == false) {
-        openedSocket = true;
+      if (socketAberto == false) {
+        socketAberto = true;
         try {
           const chats = await sock.groupFetchAllParticipating();
           chat_count = Object.keys(chats).length
         } catch {}
       }
-      countdown = Math.max(150, chat_count * 3.1);
+      contagemRegressiva = Math.max(150, chat_count * 3.1);
       fs.writeFileSync('.started', '1');
     } else if (connection === 'close') {
-      console.log("connection close")
+      console.log("Conexão encerrada. Tentando reconectar...")
       await genQR(qr);
     }
   });
@@ -104,14 +110,14 @@ async function loginWithPhone(phoneNumber) {
     sock.ev.on('connection.update', async (update) => {
       let { connection } = update;
       if (connection === 'open') {
-        console.log('Successfully logged in!');
+        console.log('Login realizado com sucesso!');
         await delay(3000);
-        openedSocket = true;
+        socketAberto = true;
         try {
           const chats = await sock.groupFetchAllParticipating();
           chat_count = Object.keys(chats).length
         } catch {}
-        countdown = Math.max(150, chat_count * 3.1);
+        contagemRegressiva = Math.max(150, chat_count * 3.1);
         fs.writeFileSync('.started', '1');
       } else if (connection === 'close') {
         await loginWithPhone(phoneNumber);
@@ -119,32 +125,32 @@ async function loginWithPhone(phoneNumber) {
         var pairingCode = await sock.requestPairingCode(phoneNumber);
         pairingCode = pairingCode.slice(0, 4) + "-" + pairingCode.slice(4);
 
-        console.log(`Your WhatsApp pairing code: ${pairingCode}`);
-        console.log('Enter this code on your WhatsApp app under "Linked Devices".');
+        console.log(`Seu código de pareamento do WhatsApp: ${pairingCode}`);
+        console.log('Insira este código no seu aplicativo WhatsApp em "Aparelhos Conectados".');
       }
     });
 
     sock.ev.on('creds.update', saveCreds);
   } catch (err) {
-    console.error('Login failed:', err);
+    console.error('Falha no Login:', err);
     process.exit(1);
   }
 }
 
 setInterval(async () => {
-  if (openedSocket == false || chat_count <= 0) {
+  if (socketAberto == false || chat_count <= 0) {
     return;
   }
   if (!fs.existsSync('.started')) {
     return;
   }
   console.clear();
-  console.log(`Bot is syncing messages... (${(countdown / 10).toFixed(2)}s left. Chats :: ${chat_count})`);
-  countdown--;
+  console.log(`O bot está sincronizando mensagens... (${(contagemRegressiva / 10).toFixed(2)}s restantes. Conversas :: ${chat_count})`);
+  contagemRegressiva--;
   
-  if (countdown < 0) {
+  if (contagemRegressiva < 0) {
     console.clear();
-    console.log("Run `pm2 start main.js` to start the bot.");
+    console.log("Execute `pm2 start main.js` para iniciar o bot.");
     process.exit(1);
   }
 
