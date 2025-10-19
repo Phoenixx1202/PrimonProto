@@ -1,62 +1,62 @@
 {
-  "handlers": [
-    ".",
-    "/",
-    "!"
-  ],
-  "version": "0.6.6",
-  "filters": [
-    {
-      "chat": "0000000@g.us",
-      "active": true,
-      "filters": [
-        {
-          "incoming": "^hi",
-          "outgoing": "Hello!"
-        }
-      ]
-    }
-  ],
-  "aliveMessage": {
-    "type": "text",
-    "media": "",
-    "content": "I'm alive!"
-  },
-  "welcomeMessage": [
-    {
-      "chat": "0000000@g.us",
-      "type": "text",
-      "content": "Hello!",
-      "media": ""
-    }
-  ],
-  "goodbyeMessage": [
-    {
-      "chat": "0000000@g.us",
-      "type": "text",
-      "content": "Goodbye!",
-      "media": ""
-    }
-  ],
-  "sudo": [
-    ""
-  ],
-  "worktype": "private",
-  "globalMutes": [
-    {
-      "chat": "0000000@g.us",
-      "muted_users": []
-    }
-  ],
-  "blacklist": [],
-  "plugins": [],
-  "afkMessage": {
-    "type": "text",
-    "media": "",
-    "content": "_I'am currently AFK! Please contact me later._",
-    "active": false
-  },
-  "users": {
-    "0000000@s.whatsapp.net": "Primon"
-  }
+"handlers": [
+".",
+"/",
+"!"
+],
+"version": "0.6.6",
+"filters": [
+{
+"chat": "0000000@g.us",
+"active": true,
+"filters": [
+{
+"incoming": "^hi",
+"outgoing": "Olá!"
+}
+]
+}
+],
+"aliveMessage": {
+"type": "text",
+"media": "",
+"content": "Estou online!"
+},
+"welcomeMessage": [
+{
+"chat": "0000000@g.us",
+"type": "text",
+"content": "Olá!",
+"media": ""
+}
+],
+"goodbyeMessage": [
+{
+"chat": "0000000@g.us",
+"type": "text",
+"content": "Adeus!",
+"media": ""
+}
+],
+"sudo": [
+""
+],
+"worktype": "private",
+"globalMutes": [
+{
+"chat": "0000000@g.us",
+"muted_users": []
+}
+],
+"blacklist": [],
+"plugins": [],
+"afkMessage": {
+"type": "text",
+"media": "",
+"content": "Estou Ausente no momento! Por favor, entre em contato mais tarde.",
+"active": false
+},
+"users": {
+"0000000@s.whatsapp.net": "Primon"
+}
 }
