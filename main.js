@@ -4,14 +4,17 @@ const execSync = require('child_process').execSync;
 const fs = require('fs');
 
 const installedPackages = new Set();
+// Sobrescreve o 'require' para instalar pacotes automaticamente se não forem encontrados
 Module.prototype.require = function (packageName) {
   try {
     return originalRequire.apply(this, arguments);
   } catch (err) {
+    // Verifica se o erro é de módulo não encontrado e se não é um caminho relativo
     if (err.code === 'MODULE_NOT_FOUND' && !packageName.startsWith('.')) {
       if (!installedPackages.has(packageName)) {
-        console.log(`Package ${packageName} not found. Installing...`);
+        console.log(`O pacote ${packageName} não foi encontrado. Instalando...`);
 
+        // Verifica se está rodando no Termux
         const isTermux = process?.env?.PREFIX === '/data/data/com.termux/files/usr';
 
         try {
@@ -21,9 +24,9 @@ Module.prototype.require = function (packageName) {
           return originalRequire.apply(this, arguments);
         } catch (installError) {
           if (isTermux) {
-            console.log('⚠️ Termux detected. Skipping installation of unsupported ' + packageName + ' module. Some features may not work.');
+            console.log('⚠️ Termux detectado. Pulando a instalação do módulo não suportado: ' + packageName + '. Algumas funcionalidades podem não funcionar.');
           } else {
-            console.error(`Package installation error: ${installError.message}`);
+            console.error(`Erro na instalação do pacote: ${installError.message}`);
           }
         }
       }
@@ -41,7 +44,10 @@ var sock;
 
 
 setInterval(async () => {
+  // Salva o banco de dados global a cada 5 segundos
   fs.writeFileSync("./database.json", JSON.stringify(global.database, null, 2));
+  
+  // Verifica a versão a cada 180 ciclos (aprox. 15 minutos)
   versionCheckInterval--
   if (versionCheckInterval <= 0) {
     var getLatestCommit = await axios.get("https://api.github.com/repos/phaticusthiccy/PrimonProto/commits")
@@ -51,7 +57,8 @@ setInterval(async () => {
     } else {
       if (getLatestCommit.data[0].sha != currentVersion) {
         currentVersion = getLatestCommit.data[0].sha
-        await sock.sendMessage(sock.user.id, { image: { url: "./src/new_version.png" }, caption: "*🆕 New Version Available!*\n\n_Please update your bot via_ ```.update```" });
+        // Envia notificação de nova versão
+        await sock.sendMessage(sock.user.id, { image: { url: "./src/new_version.png" }, caption: "*🆕 Nova Versão Disponível!*\n\n_Por favor, atualize seu bot via_ ```.update```" });
       }
     }
     versionCheckInterval = 180
@@ -59,7 +66,7 @@ setInterval(async () => {
 }, 5000);
 
 /**
- * Configures the logger with the specified options.
+ * Configura o logger com as opções especificadas (definido como silencioso).
  */
 const logger = pino({
   level: "silent",
@@ -75,7 +82,7 @@ const logger = pino({
 
 async function Primon() {
   const { version } = await fetchLatestBaileysVersion();
-  const { state, saveCreds  } = await useMultiFileAuthState(__dirname + "/session/");
+  const { state, saveCreds } = await useMultiFileAuthState(__dirname + "/session/");
 
   sock = makeWASocket({
     logger,
@@ -89,19 +96,21 @@ async function Primon() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
+      // Tenta reconectar a menos que o erro seja 401 (desautorizado/QR não escaneado)
       const shouldReconnect = (lastDisconnect.error.output.statusCode !== 401);
       if (shouldReconnect) {
-        console.log('Disconnected, reconnecting...');
+        console.log('Desconectado, reconectando...');
         Primon();
       } else {
-        console.log('QR code was not scanned.');
+        console.log('O código QR não foi escaneado ou a sessão expirou.');
       }
     } else if (connection === 'open') {
-      console.log('The connection is opened.');
+      console.log('A conexão está aberta.');
       const usrId = sock.user.id;
       const mappedId = usrId.split(':')[0] + `@s.whatsapp.net`;
       if (!global.similarity) global.similarity = await import('string-similarity-js');
-      await sock.sendMessage(mappedId, { text: "_Primon Online!_\n\n_Use_ ```" + global.handlers[0] + "menu``` _to see the list of commands._" });;
+      // Mensagem de online enviada para o bot
+      await sock.sendMessage(mappedId, { text: "_Primon Online!_\n\n_Use_ ```" + global.handlers[0] + "menu``` _para ver a lista de comandos._" });;
     }
   });
 
@@ -109,6 +118,7 @@ async function Primon() {
     try {
       if (!msg.hasOwnProperty("messages") || msg.messages.length === 0) return;
 
+      // Atualiza o nome de exibição (pushName) do usuário no banco de dados
       for (let {pushName, key} of msg.messages) {
         if (pushName) {
           const sender = key.participant ||(key.fromMe? sock.user.id.split(":")[0] + "@s.whatsapp.net": key.remoteJid);
@@ -121,18 +131,22 @@ async function Primon() {
       const quotedMessage = msg?.message?.extendedTextMessage?.contextInfo?.quotedMessage;
       msg.quotedMessage = quotedMessage;
 
+      // Ignora mensagens de status e se a conversa estiver na blacklist
       if ((msg.key && msg.key.remoteJid === "status@broadcast")) return;
       if (global.database.blacklist.includes(msg.key.remoteJid) && !msg.key.fromMe) return;
 
+      // Garante que o participant esteja sempre definido
       if (msg.key.participant == undefined) {
         if (msg.key.fromMe == false) {
           msg.key.participant = msg.key.remoteJid
         } else {
-          msg.key.participant = sock.user.id.split(':')[0] + `@s.whatsapp.net` 
+          msg.key.participant = sock.user.id.split(':')[0] + `@s.whatsapp.net`
         }
       }
 
+      // Lógica de resposta AFK (Away From Keyboard)
       if (global.database.afkMessage.active && (!msg.key.fromMe && !global.database.sudo.includes(msg.key.participant.split('@')[0]))) {
+        // Resposta AFK em conversas privadas (DM)
         if (msg.key.remoteJid.includes("@s.whatsapp.net")) {
           if (global.database.afkMessage.type == "text") {
             await sock.sendMessage(msg.key.remoteJid, { text: global.database.afkMessage.content });
@@ -147,7 +161,9 @@ async function Primon() {
             try { fs.unlinkSync(mediaPath) } catch {}
             return;
           }
+        // Resposta AFK em grupos (apenas se for mencionado ou responder o bot)
         } else {
+          // Se o bot foi marcado/mencionado
           if (rawMessage.messages[0]?.message?.extendedTextMessage?.contextInfo?.mentionedJid?.includes(sock.user.id.split(':')[0] + `@s.whatsapp.net`)) {
             if (global.database.afkMessage.type == "text") {
               await sock.sendMessage(msg.key.remoteJid, { text: global.database.afkMessage.content }, { quoted: rawMessage.messages[0] });
@@ -163,6 +179,7 @@ async function Primon() {
               return;
             }
           }
+          // Se a mensagem for uma resposta a uma mensagem do bot (enquanto AFK)
           if (rawMessage.messages[0]?.message?.extendedTextMessage?.contextInfo?.participant == sock.user.id.split(':')[0] + `@s.whatsapp.net`) {
             if (global.database.afkMessage.type == "text") {
               await sock.sendMessage(msg.key.remoteJid, { text: global.database.afkMessage.content });
@@ -182,16 +199,21 @@ async function Primon() {
         return;
       }
 
+      // Inicia o processamento do comando
       await start_command(msg, sock, rawMessage);
 
     } catch (error) {
       console.log(error);
-      await sock.sendMessage(sock.user.id, { text: `*⚠️ Primon Error:*\n${error}` });
+      // Envia a mensagem de erro para o número do bot (em caso de DM)
+      await sock.sendMessage(sock.user.id, { text: `*⚠️ Erro do Primon:*\n${error}` });
     }
   });
 
+  // Evento de atualização de participantes de grupo (adicionar/remover)
   sock.ev.on("group-participants.update", async (participant) => {
     if (global.database.blacklist.includes(participant.id)) return;
+    
+    // Lógica de boas-vindas
     if (participant.action === 'add') {
       const welcomeMessage = global.database.welcomeMessage.find(welcome => welcome.chat === participant.id);
       if (welcomeMessage) {
@@ -208,6 +230,7 @@ async function Primon() {
           await sock.sendMessage(participant.id, { text: welcomeMessage.content, mentions: participant.participants });
         }
       }
+    // Lógica de despedida
     } else if (participant.action === 'remove') {
       const goodbyeMessage = global.database.goodbyeMessage.find(goodbye => goodbye.chat === participant.id);
       if (goodbyeMessage) {
@@ -233,20 +256,21 @@ async function Primon() {
 }
 
 /**
- * Loads and requires all JavaScript modules from the specified directory path.
+ * Carrega e executa todos os módulos JavaScript do caminho de diretório especificado.
  *
- * @param {string} modulePath - The directory path where the modules are located.
+ * @param {string} modulePath - O caminho do diretório onde os módulos estão localizados.
+ * @param {boolean} logger - Se deve registrar o carregamento no console (padrão: true).
+ * @param {boolean} refresh - Se deve recarregar os módulos (padrão: false).
  */
-
 function loadModules(modulePath, logger = true, refresh = false) {
   fs.readdirSync(modulePath).forEach((file) => {
     if (file.endsWith(".js")) {
       if (refresh) {
         delete require.cache[require.resolve(`${modulePath}/${file}`)];
-        logger ? console.log(`Reloading plugin: ${file}`) : null;
+        logger ? console.log(`Recarregando plugin: ${file}`) : null;
         require(`${modulePath}/${file}`);
       } else {
-        logger ? console.log(`Loading plugin: ${file}`) : null;
+        logger ? console.log(`Carregando plugin: ${file}`) : null;
       }
     }
   });
@@ -255,12 +279,12 @@ global.loadModules = loadModules;
 Primon();
 
 /**
- * Downloads media from a WhatsApp message and saves it to the specified file path.
+ * Baixa mídia de uma mensagem do WhatsApp e a salva no caminho de arquivo especificado.
  *
- * @param {Object} message - The WhatsApp message object containing the media.
- * @param {string} type - The type of the media (e.g. "image", "video", "document").
- * @param {string} filepath - The file path to save the downloaded media.
- * @returns {Promise<void>} - A Promise that resolves when the media has been downloaded and saved.
+ * @param {Object} message - O objeto de mensagem do WhatsApp contendo a mídia.
+ * @param {string} type - O tipo da mídia (ex: "image", "video", "document").
+ * @param {string} filepath - O caminho do arquivo para salvar a mídia baixada.
+ * @returns {Promise<void>} - Uma Promise que resolve quando a mídia for baixada e salva.
  */
 global.downloadMedia = async (message, type, filepath) => {
   const stream = await downloadContentFromMessage(
@@ -275,14 +299,15 @@ global.downloadMedia = async (message, type, filepath) => {
   const writeStream = fs.createWriteStream(filepath);
   const { pipeline } = require("stream/promises");
   await pipeline(stream, writeStream);
-};/**
- * Checks if the number is an admin in the group.
+};
+/**
+ * Verifica se o número é um administrador no grupo.
  *
- * @param {Object} msg - The message object.
- * @param {Object} sock - The WhatsApp socket object.
- * @param {string} groupId - The ID of the group to check.
- * @param {string|boolean} number - Optional number. If false, the bot's own number is used.
- * @returns {Promise<boolean>} - Returns true if the bot is an admin, otherwise false.
+ * @param {Object} msg - O objeto da mensagem.
+ * @param {Object} sock - O objeto socket do WhatsApp.
+ * @param {string} groupId - O ID do grupo a ser verificado.
+ * @param {string|boolean} number - Número opcional. Se for 'false', o próprio número do bot é usado.
+ * @returns {Promise<boolean>} - Retorna 'true' se o número for um administrador, caso contrário, 'false'.
  */
 
 global.checkAdmin = async function (msg, sock, groupId, number = false) {
@@ -293,26 +318,32 @@ global.checkAdmin = async function (msg, sock, groupId, number = false) {
       participant.id === Number && participant.admin
     );
   } catch (error) {
-    console.error("An error occurred while checking admin status: ", error);
+    console.error("Ocorreu um erro ao verificar o status de administrador: ", error);
     return false;
   }
 };
 
+/**
+ * Obtém a lista de administradores de um grupo.
+ *
+ * @param {string} groupId - O ID do grupo.
+ * @returns {Promise<string[]>} - Uma Promise que resolve para um array de JIDs dos administradores.
+ */
 global.getAdmins = async function (groupId) {
   try {
     const groupMetadata = await sock.groupMetadata(groupId);
     const admins = groupMetadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').map(p => p.id);
     return admins
   } catch (error) {
-    console.error("An error occurred while getting admin list: ", error);
+    console.error("Ocorreu um erro ao obter a lista de administradores: ", error);
     return [];
   }
 };
 /**
- * Downloads the contents of the given URL as an arraybuffer.
+ * Baixa o conteúdo do URL fornecido como um arraybuffer.
  *
- * @param {string} url - The URL to download.
- * @returns {Promise<ArrayBuffer>} - A Promise that resolves to the arraybuffer, or an empty string if the download fails.
+ * @param {string} url - O URL para baixar.
+ * @returns {Promise<ArrayBuffer>} - Uma Promise que resolve para o arraybuffer, ou uma string vazia se o download falhar.
  */
 global.downloadarraybuffer = async function (url) {
   try {
@@ -323,6 +354,7 @@ global.downloadarraybuffer = async function (url) {
   }
 }
 
+// Define o socket globalmente (getter/setter)
 Object.defineProperty(global, "sock", {
   get: function () {
     return sock;
